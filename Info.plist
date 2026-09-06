@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Viva</string>
+    <key>CFBundleDisplayName</key>
+    <string>Viva</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.hilai.viva</string>
+    <key>CFBundleVersion</key>
+    <string>2.2.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>2.2.0</string>
+    <key>CFBundleExecutable</key>
+    <string>Viva</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSCameraUsageDescription</key>
+    <string>Viva records your webcam while you answer practice interview questions.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Viva records your microphone while you answer practice interview questions.</string>
+</dict>
+</plist>

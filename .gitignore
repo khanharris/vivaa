@@ -1,0 +1,5 @@
+.build/
+dist/
+pyvenv/
+*.log
+.DS_Store
