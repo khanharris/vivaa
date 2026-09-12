@@ -57,7 +57,8 @@ struct InterviewView: View {
             Text("Station \(engine.qIndex + 1) of \(engine.total)")
                 .font(.system(size: 14, weight: .semibold))
             Spacer()
-            phaseBadge(palette)
+            // No phase is meaningful until the camera is live.
+            if engine.ready { phaseBadge(palette) }
             Spacer()
             Button("End session") { confirmingAbort = true }
                 .buttonStyle(.bordered)
@@ -99,73 +100,64 @@ struct InterviewView: View {
                 Text(timerText)
                     .font(.system(size: 72, weight: .bold).monospacedDigit())
                     .foregroundStyle(palette.green)
-                Text("Break. Station \(engine.qIndex + 2) starts automatically, and recording begins the moment the question appears.")
+                Text("Break. Station \(engine.qIndex + 2) starts automatically.")
                     .foregroundStyle(palette.textDim)
                 Button("Skip break") { engine.skipBreak() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
-        } else {
+        } else if engine.phase == .delivery {
+            // The prompt is on screen only while it is being read out.
             VStack(spacing: 18) {
-                if engine.phase == .reading {
-                    questionCard(palette, compact: false)
-                    timerView(palette)
-                    Text("Reading time. Recording starts automatically when the timer ends.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(palette.textDim)
-                    Button("Start answer now") { engine.skipReading() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                } else if engine.phase == .delivery || engine.config.timings.readingSec == 0 {
-                    // Question read aloud, or no reading phase: keep the question fully legible beside the camera.
-                    HStack(alignment: .top, spacing: 24) {
-                        questionCard(palette, compact: false)
-                        VStack(spacing: 14) {
-                            timerView(palette)
-                            Label(deliveryCaption, systemImage: engine.phase == .delivery ? "speaker.wave.2.fill" : "record.circle")
-                                .font(.system(size: 12))
-                                .foregroundStyle(palette.textDim)
-                                .multilineTextAlignment(.center)
-                            CameraPreview(layer: engine.camera.previewLayer)
-                                .aspectRatio(16 / 9, contentMode: .fit)
-                                .frame(maxWidth: 400)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            if engine.phase == .delivery {
-                                Button("Skip reading") { engine.skipDelivery() }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                            } else {
-                                Button("End answer early") { engine.endAnswerEarly() }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                            }
-                        }
-                        .frame(maxWidth: 420)
-                    }
-                    .frame(maxWidth: 980)
-                } else {
-                    questionCard(palette, compact: true)
-                    timerView(palette)
-                    CameraPreview(layer: engine.camera.previewLayer)
-                        .aspectRatio(16 / 9, contentMode: .fit)
-                        .frame(maxWidth: 620)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    Button("End answer early") { engine.endAnswerEarly() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
+                questionCard(palette, compact: false)
+                Label(
+                    "The question is being read aloud. Recording starts, and the question disappears, the moment it finishes.",
+                    systemImage: "speaker.wave.2.fill"
+                )
+                .font(.system(size: 12))
+                .foregroundStyle(palette.textDim)
+                CameraPreview(layer: engine.camera.previewLayer)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .frame(maxWidth: 460)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Button("Skip reading") { engine.skipDelivery() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            .padding(28)
+        } else if engine.phase == .reading {
+            VStack(spacing: 18) {
+                questionCard(palette, compact: false)
+                timerView(palette)
+                Text("Reading time. Recording starts automatically when the timer ends.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.textDim)
+                Button("Start answer now") { engine.skipReading() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+            .padding(28)
+        } else {
+            // Answering: the prompt is deliberately hidden, as it is in the real
+            // interview, so practice trains recall rather than reading off a screen.
+            VStack(spacing: 18) {
+                timerView(palette)
+                CameraPreview(layer: engine.camera.previewLayer)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .frame(maxWidth: 720)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Label(
+                    "Answering. The question is hidden, as it is in the real interview. Thinking time counts toward the clock.",
+                    systemImage: "record.circle"
+                )
+                .font(.system(size: 12))
+                .foregroundStyle(palette.textDim)
+                Button("End answer early") { engine.endAnswerEarly() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
             .padding(28)
         }
-    }
-
-    private var deliveryCaption: String {
-        if engine.phase == .delivery {
-            return "The question is being read aloud. Recording starts the moment it finishes."
-        }
-        return engine.config.readAloud
-            ? "Recording started when the reading finished. Thinking time counts toward the timer."
-            : "Recording started when the question appeared. Thinking time counts toward the timer."
     }
 
     private func questionCard(_ palette: Palette, compact: Bool) -> some View {

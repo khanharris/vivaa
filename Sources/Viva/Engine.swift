@@ -41,6 +41,9 @@ final class InterviewEngine: ObservableObject {
     private var results: [QuestionResult] = []
     private var pendingStops = 0
     private var wantsFinish = false
+    // With no break, the next station waits for the previous file to finish writing:
+    // starting a recording while the last stop is still in flight would be dropped.
+    private var pendingAdvance: (() -> Void)?
     private var abortedFlag = false
     private let startedAt = isoNow()
     private var bag = Set<AnyCancellable>()
@@ -176,14 +179,25 @@ final class InterviewEngine: ObservableObject {
             )
             self.pendingStops -= 1
             if self.wantsFinish, self.pendingStops == 0 { self.finish() }
+            if self.pendingStops == 0, let advance = self.pendingAdvance {
+                self.pendingAdvance = nil
+                advance()
+            }
         }
         Beeper.shared.phaseChange()
         if isLast {
             wantsFinish = true
             phase = .finished
             if pendingStops == 0 { finish() }
-        } else {
+        } else if config.timings.breakSec > 0 {
             startPhase(.pause, seconds: config.timings.breakSec)
+        } else {
+            let advance = { [weak self] in
+                guard let self, !self.finished else { return }
+                self.qIndex += 1
+                self.startQuestion()
+            }
+            if pendingStops == 0 { advance() } else { pendingAdvance = advance }
         }
     }
 
@@ -225,6 +239,7 @@ final class InterviewEngine: ObservableObject {
     private func finish() {
         guard !finished else { return }
         finished = true
+        pendingAdvance = nil
         reader.stop()
         timer?.invalidate()
         camera.stop()

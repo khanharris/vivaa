@@ -3,6 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Command Line Tools 27.0 and later ship without the SwiftUI macro plugin, so
+# @State and friends fail to compile against their SDK ("plugin for module
+# 'SwiftUIMacros' not found"). Full Xcode carries it; use Xcode's toolchain
+# when it is installed and no toolchain was chosen explicitly.
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode.app/Contents/Developer ]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+
 swift build -c release
 
 APP="dist/Viva.app"

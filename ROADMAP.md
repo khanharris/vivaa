@@ -11,20 +11,21 @@ Recorded MMIs vary between programs, so the defaults below are what the app ship
 - **6 stations**, each a single question prompt
 - **No separate reading time**: recording starts as soon as the question has been delivered, and thinking time counts within the answer time
 - **Questions are delivered aloud**, since these interviews commonly present each prompt as a short video of an interviewer reading it. The app reads each question with the system voice and starts recording when it ends
+- **The prompt is on screen only while it is read out**, then hidden for the whole answer, so the candidate speaks from memory
 - **5 minutes** to think and deliver a **recorded** response, with no live interviewer
-- A **30-second gap** between stations
+- **No break between stations**: the next question begins as soon as the previous answer stops recording
 - Common themes: motivation for medicine, ethical dilemmas and situational judgment, teamwork, communication, public health
 
 Because these interviews are *recorded to a webcam with no human present*, a solo practice app is an almost perfect simulation of the real thing, not just an approximation.
 
-**Default session config:** 6 stations × 5 min answer + 5 × 30 s gaps ≈ **33 minutes**. All timings and station counts should be configurable so the app can adapt to other formats.
+**Default session config:** 6 stations × 5 min answer, back to back, plus the time taken to read each question aloud ≈ **32 minutes**. All timings and station counts should be configurable so the app can adapt to other formats.
 
 ---
 
 ## Core features
 
 ### 1. Interview session engine
-- Full-screen "exam mode" that walks through: the question read aloud → answer screen (camera on, 5:00 countdown) → break screen → next station
+- Full-screen "exam mode" that walks through: the question read aloud on screen → answer screen (camera on, 5:00 countdown, prompt hidden) → next station, with no break
 - Auto-advance exactly like the real thing — no pausing, no re-dos (with an optional "practice mode" that allows pause/retry for early prep)
 - Visual + audio cues (30-second warning, etc.)
 
@@ -101,6 +102,7 @@ The app is already useful with just this.
 
 ### Phase 2 — Custom questions & review
 - [x] Question set import (JSON), theme tagging
+- [x] Practise a single station from a set instead of the whole session
 - [ ] Session history screen: past-session list shipped (analyze/view summary/open folder); in-app video replay still to do
 - [x] Recorded MMI format: 6 stations, question read aloud, 5:00 to think and answer
 - [ ] Configurable format (station count, timings) in the UI — currently code constants
@@ -117,7 +119,8 @@ The app is already useful with just this.
 - [x] Stat tiles: sessions, answers recorded, total answering time
 - [x] Per-theme average scores (parsed from AI summaries; new summaries embed a machine-readable score block)
 - [x] Recent sessions with average scores
-- [ ] Metric trends over time (WPM/filler trends across sessions)
+- [x] Cross-session coaching review: recurring pitfalls, whether earlier advice stuck, per-theme diagnosis, and a drill plan (`coaching-review.md`)
+- [ ] Metric trends over time (WPM/filler trends across sessions) as charts in the app
 
 ### Phase 5 — Facial analysis ✅ (first version)
 - [x] Post-hoc analysis with Py-Feat (chosen over real-time MediaPipe for accuracy: full research stack, emotions + FACS action units + head pose)
@@ -130,6 +133,7 @@ The app is already useful with just this.
 - Live facial overlay during recording: the Settings playground (realtime emotion reading + landmark dots) could run during answers if the frame rate and distraction factor prove acceptable.
 
 ### Phase 6 — Polish & stretch
+- [x] Stitched session video: title card with the question read aloud, then the answer, for every station
 - [ ] Transcript synced to video playback (click a sentence → jump to that moment)
 - [ ] "Weak spot" drills: auto-build a session from your worst-scoring themes
 - [ ] Model answer generation per question

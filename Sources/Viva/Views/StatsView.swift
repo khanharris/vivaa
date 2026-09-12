@@ -11,6 +11,7 @@ struct StatsView: View {
         return (c.year ?? 2026, (c.month ?? 1) - 1)
     }()
     @State private var summarySheet: (id: String, text: String, transcript: String?)?
+    @State private var review: String?
 
     var body: some View {
         let palette = Palette.forScheme(scheme)
@@ -21,6 +22,7 @@ struct StatsView: View {
 
                 if let stats, stats.totalSessions > 0 {
                     tiles(stats, palette)
+                    reviewCard(stats, palette)
                     calendarCard(stats, palette)
                     if !stats.themes.isEmpty { themesCard(stats, palette) }
                     sessionsCard(stats, palette)
@@ -36,6 +38,7 @@ struct StatsView: View {
         .background(palette.background)
         .onAppear { reload() }
         .onChange(of: analysis.completedTick) { _, _ in reload() }
+        .onChange(of: analysis.reviewTick) { _, _ in loadReview() }
         .sheet(isPresented: Binding(get: { summarySheet != nil }, set: { if !$0 { summarySheet = nil } })) {
             if let sheet = summarySheet {
                 VStack(alignment: .leading, spacing: 10) {
@@ -54,7 +57,12 @@ struct StatsView: View {
         }
     }
 
+    private func loadReview() {
+        review = analysis.reviewFile.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    }
+
     private func reload() {
+        loadReview()
         guard let saveDir = store.settings.saveDir else {
             stats = PracticeStats()
             return
@@ -90,6 +98,78 @@ struct StatsView: View {
     private func practiceLabel(_ ms: Int) -> String {
         let minutes = Int((Double(ms) / 60000).rounded())
         return minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
+    }
+
+    // MARK: - Coaching review
+
+    private func reviewCard(_ stats: PracticeStats, _ palette: Palette) -> some View {
+        let analyzed = stats.sessions.filter(\.hasSummary).count
+        let progress = analysis.reviewProgress
+        let isError = progress.hasPrefix("Error")
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Coaching review").font(.system(.title3, design: .serif))
+                Spacer()
+                if review != nil, let file = analysis.reviewFile {
+                    Button("Open") { NSWorkspace.shared.open(file) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                Button(review == nil ? "Review all sessions" : "Update review") {
+                    analysis.runReview()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(analysis.reviewRunning || analyzed < 2)
+            }
+            Text("Reads every analyzed session at once and looks for what a single session cannot show: the habits that keep recurring, whether earlier advice stuck, and what to drill next.")
+                .font(.system(size: 11))
+                .foregroundStyle(palette.textDim)
+            if analyzed < 2 {
+                Text("Needs at least two analyzed sessions; you have \(analyzed). Analyze more from the list below.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.amber)
+            }
+            if !progress.isEmpty {
+                HStack(spacing: 8) {
+                    if !isError { ProgressView().controlSize(.small) }
+                    Text(progress)
+                        .font(.system(size: 11))
+                        .foregroundStyle(isError ? palette.amber : palette.textDim)
+                }
+            }
+            if let review {
+                if let stamp = reviewStamp(review) {
+                    Text(stamp).font(.system(size: 10)).foregroundStyle(palette.textDim)
+                }
+                ScrollView {
+                    MarkdownText(text: reviewBody(review), palette: palette)
+                }
+                .frame(maxHeight: 460)
+            }
+        }
+        .card(palette)
+    }
+
+    // The file starts with an HTML comment recording when and over what it was built.
+    private func reviewStamp(_ text: String) -> String? {
+        guard let line = text.components(separatedBy: "\n").first,
+              line.hasPrefix("<!--"), line.hasSuffix("-->") else { return nil }
+        let inner = line.dropFirst(4).dropLast(3).trimmingCharacters(in: .whitespaces)
+        guard inner.hasPrefix("Generated ") else { return nil }
+        let rest = String(inner.dropFirst("Generated ".count))
+        let parts = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard let iso = parts.first, let date = parseISO(String(iso)) else { return inner }
+        let f = DateFormatter()
+        f.dateFormat = "d MMM yyyy, h:mm a"
+        let detail = parts.count > 1 ? String(parts[1]) : ""
+        return "Generated \(f.string(from: date))\(detail.isEmpty ? "" : " " + detail)"
+    }
+
+    private func reviewBody(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+        if lines.first?.hasPrefix("<!--") == true { lines.removeFirst() }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Calendar heatmap
@@ -268,14 +348,34 @@ struct StatsView: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                         }
+                        let videoURL = s.dir.appendingPathComponent(SessionVideo.filename)
+                        let hasVideo = FileManager.default.fileExists(atPath: videoURL.path)
+                        Button(hasVideo ? "Remake video" : "Make video") {
+                            analysis.makeSessionVideo(s.dir)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(analysis.stitchRunning.contains(s.dir.path))
+                        if hasVideo {
+                            Button("Play") { NSWorkspace.shared.open(videoURL) }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                        }
                         Button("Open") { NSWorkspace.shared.open(s.dir) }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
-                    if let message = analysis.progress[s.dir.path], !message.isEmpty {
-                        Text(message)
-                            .font(.system(size: 11))
-                            .foregroundStyle(message.hasPrefix("Error") ? palette.amber : palette.textDim)
+                    ForEach(
+                        [analysis.progress[s.dir.path], analysis.stitchProgress[s.dir.path]]
+                            .compactMap { $0 }.filter { !$0.isEmpty },
+                        id: \.self
+                    ) { message in
+                        HStack(spacing: 8) {
+                            if !message.hasPrefix("Error") { ProgressView().controlSize(.small) }
+                            Text(message)
+                                .font(.system(size: 11))
+                                .foregroundStyle(message.hasPrefix("Error") ? palette.amber : palette.textDim)
+                        }
                     }
                 }
             }

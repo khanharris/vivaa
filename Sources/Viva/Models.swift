@@ -19,10 +19,10 @@ struct Timings: Codable, Hashable {
     var answerSec: Int
     var breakSec: Int
 
-    // Recorded MMI defaults: the question is delivered, recording starts immediately,
-    // and the 5 minutes include thinking time. A 30 s gap separates stations.
-    static let full = Timings(readingSec: 0, answerSec: 300, breakSec: 30)
-    static let quick = Timings(readingSec: 0, answerSec: 15, breakSec: 5)
+    // Recorded MMI defaults: the question is read out, recording starts the moment the
+    // reading ends, and the 5 minutes include thinking time. No break between stations.
+    static let full = Timings(readingSec: 0, answerSec: 300, breakSec: 0)
+    static let quick = Timings(readingSec: 0, answerSec: 15, breakSec: 0)
 }
 
 struct QuestionResult: Codable {

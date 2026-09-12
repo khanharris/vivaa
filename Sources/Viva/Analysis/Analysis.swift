@@ -122,6 +122,13 @@ final class AnalysisManager: ObservableObject {
     // sessionDir path -> progress message; empty when idle.
     @Published var progress: [String: String] = [:]
     @Published var completedTick = 0
+    // Cross-session review (see Review.swift).
+    @Published var reviewProgress = ""
+    @Published var reviewTick = 0
+    @Published var reviewRunning = false
+    // Stitched session video (see Stitch.swift).
+    @Published var stitchProgress: [String: String] = [:]
+    @Published var stitchRunning = Set<String>()
     private var running = Set<String>()
     let store: AppStore
 
@@ -223,9 +230,17 @@ final class AnalysisManager: ObservableObject {
                     timeout: 300
                 )
                 if conv.code == 0 {
+                    // -mc 0 disables carrying decoded text between whisper's 30 s
+                    // windows. With the default (-1) a single repeated phrase gets fed
+                    // back in as context and the decoder locks into a loop, emitting
+                    // the same sentence for every later window while real speech is
+                    // lost. Costs a little cross-window coherence, prevents that.
                     let wr = try await runProcess(
                         whisper,
-                        ["-m", model, "-f", wav.path, "-l", "en", "--prompt", verbatimPrompt, "-np", "-oj", "-of", jsonBase.path],
+                        [
+                            "-m", model, "-f", wav.path, "-l", "en", "--prompt", verbatimPrompt,
+                            "-mc", "0", "-np", "-oj", "-of", jsonBase.path
+                        ],
                         timeout: 1800
                     )
                     if wr.code == 0,
@@ -273,26 +288,39 @@ final class AnalysisManager: ObservableObject {
             ])
             if let script, let python {
                 for (i, q) in answered.enumerated() {
-                    report("Analyzing facial expressions, answer \(i + 1) of \(answered.count)… (this is the slow part)")
                     let media = dir.appendingPathComponent(q.file ?? "")
                     let out = dir.appendingPathComponent("q\(q.index).faces.json")
-                    do {
-                        let res = try await runProcess(
-                            python,
-                            [script, media.path, "--out", out.path, "--fps", "2"],
-                            timeout: 1800
-                        )
-                        if res.code == 0,
-                           let data = try? Data(contentsOf: out),
-                           let faces = try? JSONDecoder().decode(FacesFile.self, from: data),
-                           let idx = questions.firstIndex(where: { $0.index == q.index }) {
-                            questions[idx].facial = faces.summary_text
-                            if let timeline = faces.timeline, !timeline.isEmpty {
-                                questions[idx].faces = timeline
+
+                    // Facial cues depend only on the recording, which never changes once
+                    // a session is saved, so an earlier run's result is reused. That keeps
+                    // re-analysis (after a transcription fix, say) to minutes not hours.
+                    var faces: FacesFile?
+                    if let data = try? Data(contentsOf: out) {
+                        faces = try? JSONDecoder().decode(FacesFile.self, from: data)
+                    }
+                    if faces == nil {
+                        report("Analyzing facial expressions, answer \(i + 1) of \(answered.count)… (this is the slow part)")
+                        do {
+                            let res = try await runProcess(
+                                python,
+                                [script, media.path, "--out", out.path, "--fps", "2"],
+                                timeout: 1800
+                            )
+                            if res.code == 0, let data = try? Data(contentsOf: out) {
+                                faces = try? JSONDecoder().decode(FacesFile.self, from: data)
                             }
+                        } catch {
+                            report("Facial analysis failed for answer \(q.index): \(error.localizedDescription)")
                         }
-                    } catch {
-                        report("Facial analysis failed for answer \(q.index): \(error.localizedDescription)")
+                    } else {
+                        report("Reusing facial analysis, answer \(i + 1) of \(answered.count)…")
+                    }
+
+                    if let faces, let idx = questions.firstIndex(where: { $0.index == q.index }) {
+                        questions[idx].facial = faces.summary_text
+                        if let timeline = faces.timeline, !timeline.isEmpty {
+                            questions[idx].faces = timeline
+                        }
                     }
                 }
             } else {
@@ -320,15 +348,16 @@ final class AnalysisManager: ObservableObject {
         report("")
     }
 
-    private enum FeedbackResult {
+    enum FeedbackResult {
         case success(String)
         case failure(String)
     }
 
-    private static func feedback(
+    static func feedback(
         provider: FeedbackProvider,
         prompt: String,
-        settings: Settings
+        settings: Settings,
+        timeout: TimeInterval = 900
     ) async -> FeedbackResult {
         let fm = FileManager.default
         switch provider {
@@ -344,7 +373,7 @@ final class AnalysisManager: ObservableObject {
                     ["-p", "--model", model, "--effort", effort, "--no-session-persistence"],
                     stdin: prompt,
                     cwd: fm.temporaryDirectory,
-                    timeout: 900
+                    timeout: timeout
                 )
                 let combined = res.stdout + res.stderr
                 if combined.lowercased().contains("not logged in") {
@@ -370,7 +399,7 @@ final class AnalysisManager: ObservableObject {
                     ["exec", "--skip-git-repo-check", "--output-last-message", outFile.path],
                     stdin: prompt,
                     cwd: fm.temporaryDirectory,
-                    timeout: 900
+                    timeout: timeout
                 )
                 let combined = res.stdout + res.stderr
                 let lower = combined.lowercased()
@@ -394,7 +423,7 @@ final class AnalysisManager: ObservableObject {
 
     // MARK: - Helpers
 
-    private static func loadRubric() -> String {
+    static func loadRubric() -> String {
         if let text = try? String(contentsOf: Paths.rubricFile, encoding: .utf8) { return text }
         try? defaultRubric.write(to: Paths.rubricFile, atomically: true, encoding: .utf8)
         return defaultRubric
@@ -405,7 +434,7 @@ final class AnalysisManager: ObservableObject {
         text.replacingOccurrences(of: "\n", with: "\n> ")
     }
 
-    private static func durationLabel(_ ms: Int) -> String {
+    nonisolated static func durationLabel(_ ms: Int) -> String {
         let total = Int((Double(ms) / 1000).rounded())
         return "\(total / 60):" + String(format: "%02d", total % 60)
     }
